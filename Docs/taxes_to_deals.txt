@@ -1,0 +1,32 @@
+select top (10) * from dbo.[TAXES]
+GO
+
+select top (10) * from DBO.[TAXES_TO_DEALS]
+GO
+
+select top (10) * from DBO.[TAX_PLAN_COMMISSIONS]
+GO
+
+/* Назначените пакеки от такси ( tax bundle ) към стандартен договор */
+select top (1000) * 
+from dbo.[TAXES_TO_STD_DEALS] with(nolock)
+where DEAL_TYPE = 1 and STD_DOG_CODE = 2
+go
+
+/* Всички такси към стандартен договор */
+select top (1000)  * 
+from dbo.[TAX_BUNDLES_ITEMS] with(nolock)
+where BUNDLE_CODE in 
+(
+    select TAX_BUNDLE_CODE 
+	from dbo.[TAXES_TO_STD_DEALS] with(nolock)
+	where DEAL_TYPE = 1 and STD_DOG_CODE = 2     
+)
+
+/* Назначените такси към сделката */
+select top (1000) * 
+from TAXES_TO_DEALS_RAZPL with(nolock)
+where DEAL_NUMBER = 2471545
+	and DEAL_TYPE = 1
+go
+
