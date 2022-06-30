@@ -43,19 +43,27 @@ begin
         ,   @DB_CLIENT_TYPE         int = -1 /* DT 300 */
         ,	@DEAL_TYPE  			int =  1
         ,	@UI_DEAL_NUM    		int = -1
+        ,   @UI_PAY_SYSTEM_CHECK_RESULT varchar(65) = N''
+        ,   @DB_CLIENT_TYPE_BEN     int = -1 /* DT 300 */        
     ;
     select  @EVENT_TYPE             = IsNull([PREV].[EVENT_TYPE],-1)
         ,   @UI_INOUT_TRANSFER      = IsNull([X].[UI_INOUT_TRANSFER],-1)
         ,   @BETWEEN_OWN_ACCOUNTS   = IsNull([PREV].[BETWEEN_OWN_ACCOUNTS],-1) 
         ,   @UI_TYPE_ENTRANCE       = IsNull([X].[UI_TYPE_ENTRANCE],-1)
         ,   @DB_CLIENT_TYPE         = IsNull([CUST].[DB_CLIENT_TYPE],-1)
-        ,   @DEAL_TYPE              = 1 /*IsNull([DEAL].[DEAL_TYPE],-1)*/
+        ,   @DEAL_TYPE              = IsNull([PREV].[DEAL_TYPE],-1)
         ,   @UI_DEAL_NUM            = IsNull([DEAL].[UI_DEAL_NUM],-1)
+        ,   @UI_PAY_SYSTEM_CHECK_RESULT = IsNull([PREV].[UI_PAY_SYSTEM_CHECK_RESULT],'')
+        ,   @DB_CLIENT_TYPE_BEN     = IsNull([CUST_BEN].[DB_CLIENT_TYPE],-1)
     from dbo.[PREV_COMMON_TA] [PREV] with(nolock)
 	inner join dbo.[RAZPREG_TA] [DEAL] with(nolock)
 		on [PREV].[REF_ID] = [DEAL].[ROW_ID]
 	inner join dbo.[DT015_CUSTOMERS_ACTIONS_TA] [CUST] with(nolock)
 		on [DEAL].[REF_ID] = [CUST].[ROW_ID]
+    left outer join dbo.[RAZPREG_TA] [DEAL_BEN] with(nolock)
+		on [PREV].[REF_ID_BEN] = [DEAL_BEN].[ROW_ID]
+    left outer join dbo.[DT015_CUSTOMERS_ACTIONS_TA] [CUST_BEN] with(nolock)
+        on [CUST_BEN].[ROW_ID] = [DEAL_BEN].[REF_ID]
 	cross apply (
 		select  case when ISNUMERIC( [UI_INOUT_TRANSFER] ) = 1
 				    then cast( FLOOR([UI_INOUT_TRANSFER]) as int)
@@ -113,15 +121,27 @@ begin
         2 - Междубанков получен кредитен превод;
         3 - Междубанков издаден кредитен превод; 
         4 - Превод между сметки на клиента; */
-    declare @TypeTransfer int =
-    (
-         select case when @BETWEEN_OWN_ACCOUNTS = 1         then 4 /* 4 - Превод между сметки на клиента */
-                     else case  when @UI_INOUT_TRANSFER = 1 then 2 /* 2 - Междубанков получен кредитен превод; */
-                                when @UI_INOUT_TRANSFER = 2 then 3 /* 3 - Междубанков издаден кредитен превод; */
-                                when @UI_INOUT_TRANSFER = 3 then 1 /* 1 - Вътрешнобанков превод; */
-                           end 
-                end                         
-    );
+    declare @TypeTransfer   int = -1
+        ,   @PaymentSystem  int = 2
+    ;
+    select @TypeTransfer
+            = case
+                when @BETWEEN_OWN_ACCOUNTS = 1      then 4 /* 4 - Превод между сметки на клиента */
+            else case   when @UI_INOUT_TRANSFER = 1 then 2 /* 2 - Междубанков получен кредитен превод; */
+                        when @UI_INOUT_TRANSFER = 2 then 3 /* 3 - Междубанков издаден кредитен превод; */
+                        when @UI_INOUT_TRANSFER = 3 then 1 /* 1 - Вътрешнобанков превод; */
+                end 
+            end
+        ,   @PaymentSystem
+            = case
+                when @UI_PAY_SYSTEM_CHECK_RESULT in ( 'RINGS', 'РИНГС' )    then 1
+                when @UI_PAY_SYSTEM_CHECK_RESULT in ( 'Бисера 6', 'БИСЕРА') then 2
+                when @UI_PAY_SYSTEM_CHECK_RESULT in ( 'СЕБРА' )             then 3
+                when @UI_PAY_SYSTEM_CHECK_RESULT in ( 'SWIFT' )             then 4
+                when @UI_PAY_SYSTEM_CHECK_RESULT in ( 'БИСЕРА 7' )          then 6
+                when @UI_PAY_SYSTEM_CHECK_RESULT in ( 'TARGET2' )           then 7
+            else -1 end
+    ;
 
     create table #contex_description_values
     (
@@ -130,54 +150,74 @@ begin
     );
 
     insert into #contex_description_values ([DESCR_TYPE], [DESCR_VALUE])
-    values	( 8, 2 )                    /*  8 - Платежна система:  1 РИНГС; 2 БИСЕРА; 3 СЕБРА; 4 SWIFT; 6 БИСЕРА 7; 7 TARGET2; */
-        ,   ( 9, 1 )                    /*  9 - Обслужваща система: 1 Основна система */
-	    ,	(10, 2 )                    /* 10 - Контекст: 2 Сделка */
-	    ,	(65, 1 )                    /* 65 - Описател на вид вноска: 1 Вноска към собствена сметка */
-        ,   ( 5, @TypeTransfer )        /*  5 - Тип на превода (NM329): */
-	    ,	( 7, @UI_TYPE_ENTRANCE )    /*  7 - Тип на вноска; */
-	    ,	(40, @DB_CLIENT_TYPE )      /* 40 - Тип на клиента; */
+    values	( 5, @TypeTransfer )        /*  5 - Тип на превода (NM329): */
+	    ,	( 7, @UI_TYPE_ENTRANCE )    /*  7 - Тип на вноска (NM331);  */
+        ,   ( 8, @PaymentSystem )       /*  8 - Платежна система (NM332):  1 РИНГС; 2 БИСЕРА; 3 СЕБРА; 4 SWIFT; 6 БИСЕРА 7; 7 TARGET2; */        
+        ,   ( 9, 1 )                    /*  9 - Обслужваща система (NM333): 1 Основна система */
+	    ,	(10, 2 )                    /* 10 - Контекст (MN334): 2 Сделка */
+    -- ,	(40, @DB_CLIENT_TYPE )      /* 40 - Тип на клиента(DT300); */
+	-- ,	(64, @DB_CLIENT_TYPE )      /* 64 - Тип клиент (получател) (DT300) */
+	    ,	(65, 1 )                    /* 65 - Описател на вид вноска (NM509): 1 Вноска към собствена сметка */
     ;
+
+    if IsNull(@EVENT_TYPE,0) = 1
+    begin
+        insert into #contex_description_values ([DESCR_TYPE], [DESCR_VALUE])
+        values (64, @DB_CLIENT_TYPE )       /* 64 - Тип клиент (получател) (DT300) */
+    end
+
+    if IsNull(@EVENT_TYPE,0) > 1
+    begin
+        insert into #contex_description_values ([DESCR_TYPE], [DESCR_VALUE])
+        values (40, @DB_CLIENT_TYPE )       /* 40 - Тип на клиента(DT300); */
+            ,  (64, @DB_CLIENT_TYPE_BEN )   /* 64 - Тип клиент (получател) (DT300) */
+    end
 
    	/************************************************************************************************************/
 	/* 5. Determine tax code */
     ;
-    with [TDC] as
+    with [TAX_DESCR_TYPE] as
     (   /* 1. Групираме по описател */
         select [TAX_CODE], [DESCR_TYPE]
         from #TBL_TAX_WITH_DESC with(nolock)
         group by [TAX_CODE], [DESCR_TYPE]
     )
-    , [MV] as
+    , [MATCH_DESCR_VAL] as
     (   /* 2. Подготвяме съвпаденията */
-        select	[d].*
-            ,	[c].[DESCR_VALUE] as [MATCH_VALUE]
-        FROM #TBL_TAX_WITH_DESC [d] with(nolock)
-        left outer join #contex_description_values [c] with(nolock)
-            on	[d].[DESCR_TYPE] = [c].[DESCR_TYPE]
-            and	[d].[DESCR_VALUE] = [c].[DESCR_VALUE]
-        where [c].[DESCR_VALUE] is not null
+        select	[D].*
+            ,	[C].[DESCR_VALUE] as [MATCH_VALUE]
+        FROM #TBL_TAX_WITH_DESC [D] with(nolock)
+        left outer join #contex_description_values [C] with(nolock)
+            on	[D].[DESCR_TYPE]    = [C].[DESCR_TYPE]
+            and	[D].[DESCR_VALUE]   = [C].[DESCR_VALUE]
+        where [C].[DESCR_VALUE] is not null
     )
-    , TAX_NOT_S AS
+    , [TAX_NOT_SATISFIED] AS
     (   /* 3. Всички такси който не са удоволетворяване */
         select distinct [T].[TAX_CODE]
-        from [TDC] [T]
-        left outer join [MV]
-            on	[T].[TAX_CODE] = [MV].[TAX_CODE]
-            and [T].[DESCR_TYPE] = [MV].[DESCR_TYPE]
-        where [MV].[MATCH_VALUE] is null
+        from [TAX_DESCR_TYPE] [T]
+        left outer join [MATCH_DESCR_VAL] [M]
+            on	[T].[TAX_CODE]   = [M].[TAX_CODE]
+            and [T].[DESCR_TYPE] = [M].[DESCR_TYPE]
+        where [M].[MATCH_VALUE] is null
     )
     select top (1) /* 4. Определяме код на таксата */ 
         @TAX_CODE = [T].[TAX_CODE]
-    from [TDC] [T]
+    from [TAX_DESCR_TYPE] [T]
     where [T].[TAX_CODE] not in
     ( 
         select [TAX_CODE] 
-        from [TAX_NOT_S]
+        from [TAX_NOT_SATISFIED]
     );
 
     if IsNull(@TAX_CODE,0) <= 0
     begin
+        if @LogTraceInfo = 1
+        begin
+            select * from #TBL_TAX_WITH_DESC with(nolock);
+            select * from #contex_description_values with(nolock);
+        end
+
 		select @Msg = N'Not found Tax code for TA ROW_ID : ' + @TestCaseRowID
                 + N', EVENT_TYPE: ' + str(@EVENT_TYPE,len(@EVENT_TYPE),0)
                 + N', DEAL_TYPE: ' + str(@DEAL_TYPE,len(@DEAL_TYPE),0)
@@ -186,6 +226,7 @@ begin
                 + N', UI_TYPE_ENTRANCE: ' + str(@UI_TYPE_ENTRANCE,len(@UI_TYPE_ENTRANCE),0)
                 + N', UI_INOUT_TRANSFER: ' + str(@UI_INOUT_TRANSFER,len(@UI_INOUT_TRANSFER),0)
                 + N', BETWEEN_OWN_ACCOUNTS: ' + str(@BETWEEN_OWN_ACCOUNTS,len(@BETWEEN_OWN_ACCOUNTS),0)
+                + N', DB_CLIENT_TYPE_BEN: ' + str(@DB_CLIENT_TYPE_BEN,len(@DB_CLIENT_TYPE_BEN),0)
         ;
 		exec dbo.SP_SYS_LOG_PROC @@PROCID, @TestCaseRowID, @Msg
 		return 3;
@@ -204,7 +245,7 @@ begin
     begin 
         update [PREV]
         set [TAX_CODE] = @TAX_CODE
-/*      ,   [PREF_CODE] */
+/*      ,   [PREF_CODE] -- @TODO UPDATE PREFERENCE CODE */
         from dbo.[PREV_COMMON_TA] [PREV]
         where [PREV].[ROW_ID] = @TA_RowID
     end 
