@@ -43,8 +43,10 @@ begin
         ,   @DB_CLIENT_TYPE         int = -1 /* DT 300 */
         ,	@DEAL_TYPE  			int =  1
         ,	@UI_DEAL_NUM    		int = -1
-        ,   @UI_PAY_SYSTEM_CHECK_RESULT varchar(65) = N''
-        ,   @DB_CLIENT_TYPE_BEN     int = -1 /* DT 300 */        
+        ,   @UI_STD_DOG_CODE        int = -1
+        ,   @DB_CLIENT_TYPE_BEN     int = -1 /* DT 300 */
+        ,   @UI_PAY_SYSTEM_CHECK_RESULT varchar(65) = N''        
+        ,   @UI_WITHDRAWAL_WITHOUT_NOTICE varchar(65) = N''        
     ;
     select  @EVENT_TYPE             = IsNull([PREV].[EVENT_TYPE],-1)
         ,   @UI_INOUT_TRANSFER      = IsNull([X].[UI_INOUT_TRANSFER],-1)
@@ -53,8 +55,10 @@ begin
         ,   @DB_CLIENT_TYPE         = IsNull([CUST].[DB_CLIENT_TYPE],-1)
         ,   @DEAL_TYPE              = IsNull([PREV].[DEAL_TYPE],-1)
         ,   @UI_DEAL_NUM            = IsNull([DEAL].[UI_DEAL_NUM],-1)
+        ,   @UI_STD_DOG_CODE        = IsNull([DEAL].[UI_STD_DOG_CODE],-1)
+        ,   @DB_CLIENT_TYPE_BEN     = IsNull([CUST_BEN].[DB_CLIENT_TYPE],-1)        
         ,   @UI_PAY_SYSTEM_CHECK_RESULT = IsNull([PREV].[UI_PAY_SYSTEM_CHECK_RESULT],'')
-        ,   @DB_CLIENT_TYPE_BEN     = IsNull([CUST_BEN].[DB_CLIENT_TYPE],-1)
+        ,   @UI_WITHDRAWAL_WITHOUT_NOTICE = IsNull([PREV].[UI_WITHDRAWAL_WITHOUT_NOTICE],'')
     from dbo.[PREV_COMMON_TA] [PREV] with(nolock)
 	inner join dbo.[RAZPREG_TA] [DEAL] with(nolock)
 		on [PREV].[REF_ID] = [DEAL].[ROW_ID]
@@ -123,6 +127,7 @@ begin
         4 - Превод между сметки на клиента; */
     declare @TypeTransfer   int = -1
         ,   @PaymentSystem  int = 2
+        ,   @TypeWithdrawal int = 1
     ;
     select @TypeTransfer
             = case
@@ -143,6 +148,13 @@ begin
             else -1 end
     ;
 
+    /* теглене със заявка: 1; теглене без заявка: 2*/
+    select @TypeWithdrawal = case @UI_WITHDRAWAL_WITHOUT_NOTICE
+                when '1' then 1
+                when '2' then 2
+                else -1 end
+    ;
+
     create table #contex_description_values
     (
         [DESCR_TYPE]	int 
@@ -151,6 +163,7 @@ begin
 
     insert into #contex_description_values ([DESCR_TYPE], [DESCR_VALUE])
     values	( 5, @TypeTransfer )        /*  5 - Тип на превода (NM329): */
+	    ,	( 6, @TypeWithdrawal )      /*  6 - Тип на теглене (NM330); 1 със заявка; 2 - без заявка */
 	    ,	( 7, @UI_TYPE_ENTRANCE )    /*  7 - Тип на вноска (NM331);  */
         ,   ( 8, @PaymentSystem )       /*  8 - Платежна система (NM332):  1 РИНГС; 2 БИСЕРА; 3 СЕБРА; 4 SWIFT; 6 БИСЕРА 7; 7 TARGET2; */        
         ,   ( 9, 1 )                    /*  9 - Обслужваща система (NM333): 1 Основна система */
@@ -229,13 +242,54 @@ begin
                 + N', DB_CLIENT_TYPE_BEN: ' + str(@DB_CLIENT_TYPE_BEN,len(@DB_CLIENT_TYPE_BEN),0)
         ;
 		exec dbo.SP_SYS_LOG_PROC @@PROCID, @TestCaseRowID, @Msg
-		return 3;
+
+        select @TAX_CODE = 0;
+		/* return 3; --> ако за дадена сделка не намерим такса смятаме че няма назначена такава <-- */ 
+    end
+
+    declare @PREF_CODE int = 0
+    ;
+    
+    if @TAX_CODE > 0 
+    begin
+
+        begin try
+
+            exec @Ret = dbo.[SP_LOAD_ONLINE_PREFERENCIAL_CODE_BY_DEAL_AND_TAX_CODE] @OnlineSqlServerName
+                        , @OnlineSqlDataBaseName
+                        , @DEAL_TYPE
+                        , @UI_DEAL_NUM
+                        , @TAX_CODE
+                        , @UI_STD_DOG_CODE
+                        , 0 /* Open date */
+                        , @PREF_CODE OUT
+            ;
+
+            if @Ret <> 0
+            begin 
+                select  @Sql1 = N'exec dbo.[SP_LOAD_ONLINE_PREFERENCIAL_CODE_BY_DEAL_AND_TAX_CODE]'
+                    ,   @Msg = N'Error exec procedure, error code:'+str(@Ret,len(@Ret),0)
+                ;
+                exec dbo.SP_SYS_LOG_PROC @@PROCID, @Sql1, @Msg
+                return 3;
+            end
+
+        end try
+        begin catch
+			select  @Msg = dbo.FN_GET_EXCEPTION_INFO() + N', TA ROW_ID : ' + @TestCaseRowID
+                ,   @Sql1 = N'exec dbo.[SP_LOAD_ONLINE_PREFERENCIAL_CODE_BY_DEAL_AND_TAX_CODE]'
+            ;
+			exec dbo.SP_SYS_LOG_PROC @@PROCID, @Sql1, @Msg
+            return 4;
+        end catch
+
     end
 
     if @LogTraceInfo = 1
     begin 
         select  @TA_RowID       as [TEST_CASE_ID]
             ,   @TAX_CODE       as [TAX_CODE]
+            ,   @PREF_CODE      as [PREFERENCIAL_CODE]
             ,   @EVENT_TYPE     as [EVENT_TYPE]
             ,   @DEAL_TYPE      as [DEAL_TYPE]
             ,   @UI_DEAL_NUM    as [DEAL_NUMBER]
@@ -244,11 +298,11 @@ begin
     if @WithUpdate = 1
     begin 
         update [PREV]
-        set [TAX_CODE] = @TAX_CODE
-/*      ,   [PREF_CODE] -- @TODO UPDATE PREFERENCE CODE */
+        set [TAX_CODE]  = @TAX_CODE
+        ,   [PREF_CODE] = @PREF_CODE
         from dbo.[PREV_COMMON_TA] [PREV]
         where [PREV].[ROW_ID] = @TA_RowID
-    end 
+    end
 
 	/************************************************************************************************************/
 	/* Log End Of Procedure */

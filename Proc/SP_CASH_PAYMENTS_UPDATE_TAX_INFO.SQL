@@ -58,7 +58,7 @@ begin
 	where  [TA_TYPE] IN ( @DB_TYPE )
 	;
 	/************************************************************************************************************/
-	/* 2. Get Datasources: */
+	/* 2.1. Get Datasources: */
 	declare @OnlineSqlServerName sysname = N'',	@OnlineSqlDataBaseName sysname = N'', @DB_ALIAS sysname = N'VCS_OnlineDB'
 	;
 
@@ -84,7 +84,7 @@ begin
 	end
 	
 	/*********************************************************************************************************/
-	/* 2. Get Account Date */
+	/* 2.2. Get Account Date */
 	declare @CurrAccDate datetime = 0,	@AccountDate sysname = N''
 	;
 
@@ -105,7 +105,6 @@ begin
 			,	@Sql = N'exec dbo.[SP_SYS_GET_ACCOUNT_DATE_FROM_DB] '+@OnlineSqlServerName+N', '+@OnlineSqlDataBaseName+N', @CurrAccDate OUT'
 		exec dbo.SP_SYS_LOG_PROC @@PROCID, @Sql, @Msg
 	end
-
 
 	/******************************************************************************************************/
 	/* 5.4. Updare table dbo.[PREV_COMMON_TA] for Tax and Preferencial codes  */
