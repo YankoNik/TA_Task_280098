@@ -36,7 +36,7 @@ begin
 		return -1;
 	end
 	
-	declare @DB_TYPE sysname = N'BETA', @DEALS_CORR_TA_RowID int = 0
+	declare @DB_TYPE sysname = N'AIR', @DEALS_CORR_TA_RowID int = 0
 		,	@TYPE_ACTION varchar(128) = '',  @RUNNING_ORDER int = 0
 	;
 
@@ -45,14 +45,14 @@ begin
 	from dbo.[VIEW_CASH_PAYMENTS_CONDITIONS] with(nolock) where [ROW_ID] = IsNull(@TestCaseRowID, -1)
 	;
 
-	if /* @TYPE_ACTION = 'CashPayment' and */ @RUNNING_ORDER > 1
-	begin 
-		select  @Msg = N'Update cash payment with [ROW_ID] ' + @RowIdStr+' and  [RUNNING_ORDER] <> 1 not allowed.'
-			,	@Sql = @TestCaseRowID
-		;
-		exec dbo.SP_SYS_LOG_PROC @@PROCID, @Sql, @Msg;
-		return 0;
-	end
+	--if /* @TYPE_ACTION = 'CashPayment' and */ @RUNNING_ORDER > 1
+	--begin 
+	--	select  @Msg = N'Update cash payment with [ROW_ID] ' + @RowIdStr+' and  [RUNNING_ORDER] <> 1 not allowed.'
+	--		,	@Sql = @TestCaseRowID
+	--	;
+	--	exec dbo.SP_SYS_LOG_PROC @@PROCID, @Sql, @Msg;
+	--	return 0;
+	--end
 
 	select @DB_TYPE = [DB_TYPE] from dbo.[TEST_AUTOMATION_TA_TYPE] with(nolock)
 	where  [TA_TYPE] IN ( @DB_TYPE )
@@ -107,7 +107,7 @@ begin
 	end
 
 	/******************************************************************************************************/
-	/* 5.4. Updare table dbo.[PREV_COMMON_TA] for Tax and Preferencial codes  */
+	/* 3. Updare table dbo.[PREV_COMMON_TA] for Tax and Preferencial codes  */
 	declare @WithUpdate int = IsNull(@UpdateMode,-1)
 	;
 
