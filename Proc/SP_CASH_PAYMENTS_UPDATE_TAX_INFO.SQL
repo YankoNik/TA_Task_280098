@@ -40,7 +40,7 @@ begin
 		,	@TYPE_ACTION varchar(128) = '',  @RUNNING_ORDER int = 0
 	;
 
-	select	@DB_TYPE = [TA_TYPE], @DEALS_CORR_TA_RowID = [CORS_ROW_ID]
+	select	@DB_TYPE = [DB_TYPE], @DEALS_CORR_TA_RowID = [CORS_ROW_ID]
 		,	@TYPE_ACTION = [TYPE_ACTION], @RUNNING_ORDER = IsNull([RUNNING_ORDER],1)
 	from dbo.[VIEW_CASH_PAYMENTS_CONDITIONS] with(nolock) where [ROW_ID] = IsNull(@TestCaseRowID, -1)
 	;
@@ -54,9 +54,6 @@ begin
 	--	return 0;
 	--end
 
-	select @DB_TYPE = [DB_TYPE] from dbo.[TEST_AUTOMATION_TA_TYPE] with(nolock)
-	where  [TA_TYPE] IN ( @DB_TYPE )
-	;
 	/************************************************************************************************************/
 	/* 2.1. Get Datasources: */
 	declare @OnlineSqlServerName sysname = N'',	@OnlineSqlDataBaseName sysname = N'', @DB_ALIAS sysname = N'VCS_OnlineDB'
@@ -67,7 +64,7 @@ begin
 	begin
 		select  @Msg = N'Error execute proc, Error code: '+str(@Ret,len(@Ret),0)
 					+' ; Result: @OnlineSqlServerName = "'+@OnlineSqlServerName+'", @OnlineSqlDataBaseName = "'+@OnlineSqlDataBaseName+'"'
-			,	@Sql = N'exec dbo.[SP_SYS_GET_ACCOUNT_DATE_FROM_DB] @DB_TYPE = '
+			,	@Sql = N'exec dbo.[SP_CASH_PAYMENTS_GET_DATASOURCE] @DB_TYPE = '
 					+ @DB_TYPE  +N', @DB_ALIAS = '+ @DB_ALIAS +N', @OnlineSqlServerName OUT, @OnlineSqlDataBaseName OUT'
 		;
 		exec dbo.SP_SYS_LOG_PROC @@PROCID, @Sql, @Msg
@@ -77,7 +74,7 @@ begin
 	if @LogTraceInfo = 1 
 	begin 
 		select  @Msg = N'After: exec dbo.[SP_CASH_PAYMENTS_GET_DATASOURCE], @OnlineSqlServerName: ' +@OnlineSqlServerName+', @OnlineSqlDataBaseName = '+@OnlineSqlDataBaseName+' '
-			,	@Sql = N'exec dbo.[SP_SYS_GET_ACCOUNT_DATE_FROM_DB] @DB_TYPE = '
+			,	@Sql = N'exec dbo.[SP_CASH_PAYMENTS_GET_DATASOURCE] @DB_TYPE = '
 					+ @DB_TYPE  +N', @DB_ALIAS = '+ @DB_ALIAS +N', @OnlineSqlServerName OUT, @OnlineSqlDataBaseName OUT'
 		;
 		exec dbo.SP_SYS_LOG_PROC @@PROCID, @Sql, @Msg

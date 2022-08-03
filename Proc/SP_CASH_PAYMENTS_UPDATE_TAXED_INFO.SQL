@@ -186,6 +186,13 @@ begin
             ,  (64, @DB_CLIENT_TYPE_BEN )   /* 64 - Тип клиент (получател) (DT300) */
     end
 
+    /* @TODO UpdateTaxes - да се добави нова данни, която да се изчита */
+    if IsNull(@EVENT_TYPE,0) = 12
+    begin
+        insert into #contex_description_values ([DESCR_TYPE], [DESCR_VALUE])
+        values (18, 1 )       /* 18 - Тип на плащане (ДД) (NM336) 1 -Директен дебит - обикновен */
+    end
+
    	/************************************************************************************************************/
 	/* 5. Determine tax code */
     ;
